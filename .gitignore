@@ -1,0 +1,36 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Node dependencies and builds
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python caches, virtual environments, and local databases
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local editor and agent artifacts
+.cursor/
+.graphify_cached.json
+graphify-out/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,89 @@
+import uuid
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional
+from ..database import get_db
+from ..models import Event, EventRegistration, User, UserRole, Notification
+from .auth import get_current_user
+
+router = APIRouter()
+
+class EventCreate(BaseModel):
+    title: str
+    description: str = ""
+    date: str
+    time: str = "10:00 AM"
+    location: str
+    lat: float = 28.6139
+    lng: float = 77.2090
+    category: str = "general"
+    spots: int = 50
+
+@router.get("/")
+def list_events(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    events = db.query(Event).order_by(Event.created_at.desc()).all()
+    result = []
+    for e in events:
+        reg_count = db.query(EventRegistration).filter(EventRegistration.event_id == e.id).count()
+        is_registered = db.query(EventRegistration).filter(
+            EventRegistration.event_id == e.id, EventRegistration.user_id == current_user.id
+        ).first() is not None
+        result.append({
+            "id": e.id, "title": e.title, "description": e.description,
+            "date": e.date, "time": e.time, "location": e.location,
+            "lat": e.lat, "lng": e.lng, "category": e.category,
+            "spots": e.spots, "registeredCount": reg_count,
+            "isRegistered": is_registered, "createdAt": str(e.created_at) if e.created_at else ""
+        })
+    return result
+
+@router.post("/")
+def create_event(payload: EventCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != UserRole.COORDINATOR:
+        raise HTTPException(status_code=403, detail="Only coordinators can create events")
+    event = Event(
+        id=f"evt-{str(uuid.uuid4())[:8]}", title=payload.title, description=payload.description,
+        date=payload.date, time=payload.time, location=payload.location,
+        lat=payload.lat, lng=payload.lng, category=payload.category,
+        spots=payload.spots, created_by=current_user.id
+    )
+    db.add(event)
+    db.commit()
+    return {"message": "Event created", "id": event.id}
+
+@router.post("/{event_id}/register")
+def register_for_event(event_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    existing = db.query(EventRegistration).filter(
+        EventRegistration.event_id == event_id, EventRegistration.user_id == current_user.id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Already registered")
+    reg_count = db.query(EventRegistration).filter(EventRegistration.event_id == event_id).count()
+    if reg_count >= event.spots:
+        raise HTTPException(status_code=400, detail="Event is full")
+    reg = EventRegistration(id=f"reg-{str(uuid.uuid4())[:8]}", event_id=event_id, user_id=current_user.id)
+    db.add(reg)
+    # Notify user
+    notif = Notification(
+        id=f"notif-{str(uuid.uuid4())[:8]}", user_id=current_user.id,
+        title="Event Registration", message=f"You've registered for '{event.title}'",
+        type="event"
+    )
+    db.add(notif)
+    db.commit()
+    return {"message": "Registered successfully"}
+
+@router.delete("/{event_id}/unregister")
+def unregister_from_event(event_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    reg = db.query(EventRegistration).filter(
+        EventRegistration.event_id == event_id, EventRegistration.user_id == current_user.id
+    ).first()
+    if not reg:
+        raise HTTPException(status_code=404, detail="Registration not found")
+    db.delete(reg)
+    db.commit()
+    return {"message": "Unregistered successfully"}
