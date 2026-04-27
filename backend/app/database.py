@@ -4,6 +4,8 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Get database URL from environment variable, default to SQLite for local development
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./aidflow.db")
+if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # PostgreSQL requires different connect_args than SQLite
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):

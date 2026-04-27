@@ -19,8 +19,8 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Expose port
+# Expose default local port; Render provides PORT at runtime.
 EXPOSE 8000
 
 # Run seed script then start application
-CMD python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000
+CMD python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
