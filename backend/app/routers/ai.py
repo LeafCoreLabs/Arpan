@@ -308,11 +308,55 @@ async def get_suggestions(db: Session = Depends(get_db), current_user: UserSchem
 
 @router.post("/assign")
 async def assign_match(payload: dict, db: Session = Depends(get_db), current_user: UserSchema = Depends(get_current_user)):
+    import uuid as _uuid
+    from ..models import Task, Activity
+
     match_id = payload.get("matchId", "")
     action = payload.get("action", "accept")
+    need_id = payload.get("needId", "")
+    volunteer_id = payload.get("volunteerId", "")
+
+    if not need_id or not volunteer_id:
+        parts = match_id.replace("match-", "", 1).rsplit("-", 1)
+        if len(parts) == 2:
+            need_id, volunteer_id = parts
+        else:
+            for seg_count in range(2, len(match_id.split("-"))):
+                segs = match_id.split("-")
+                candidate_need = "-".join(segs[1:-1])
+                candidate_vol = segs[-1]
+                if candidate_need and candidate_vol:
+                    need_id, volunteer_id = candidate_need, candidate_vol
+                    break
 
     if action == "reject":
+        cache_delete("ai:suggestions")
         return {"status": "rejected", "message": f"Match {match_id} rejected."}
 
-    cache_delete("ai:suggestions")
-    return {"status": "success", "message": f"Match {match_id} accepted and assigned."}
+    need = db.query(CommunityNeed).filter(CommunityNeed.id == need_id).first() if need_id else None
+    volunteer = db.query(Volunteer).filter(Volunteer.id == volunteer_id).first() if volunteer_id else None
+
+    if not need or not volunteer:
+        cache_delete("ai:suggestions")
+        return {"status": "success", "message": f"Match {match_id} accepted (IDs not resolved to DB records)."}
+
+    existing_task = db.query(Task).filter(Task.needId == need_id, Task.volunteerId == volunteer_id).first()
+    if existing_task:
+        cache_delete("ai:suggestions", "tasks:all", "dashboard:summary", "needs:*", "volunteers:all")
+        return {"status": "success", "message": "Task already exists for this match.", "taskId": existing_task.id}
+
+    task_id = f"t-{str(_uuid.uuid4())[:8]}"
+    new_task = Task(
+        id=task_id, needId=need_id, volunteerId=volunteer_id,
+        status=TaskStatus.PENDING, assignedAt="just now", eta="Pending",
+    )
+    need.status = NeedStatus.ASSIGNED
+    volunteer.status = VolunteerStatus.BUSY
+
+    act_id = f"act-{str(_uuid.uuid4())[:8]}"
+    db.add(Activity(id=act_id, kind="success", text=f"AI assigned {volunteer.name} to '{need.title}'", time="just now"))
+    db.add(new_task)
+    db.commit()
+
+    cache_delete("ai:suggestions", "tasks:all", "dashboard:summary", "needs:*", "volunteers:all", "map:data")
+    return {"status": "success", "message": f"{volunteer.name} assigned to '{need.title}'", "taskId": task_id}

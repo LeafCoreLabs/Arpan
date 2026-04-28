@@ -1,7 +1,6 @@
-import { useMemo } from 'react'
-import { Sparkles, RefreshCcw, BrainCircuit, ShieldCheck } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Sparkles, RefreshCcw, BrainCircuit, ShieldCheck, Zap, Filter } from 'lucide-react'
 import { ErrorState } from '../../../components/common/ErrorState.jsx'
-import { Loader } from '../../../components/ui/Loader.jsx'
 import { extractList } from '../../../utils/apiResponse.js'
 import { useAssignMatch, useMatching } from '../hooks/useMatching.js'
 import { MatchCard } from '../components/MatchCard.tsx'
@@ -34,9 +33,10 @@ function listFromPayload(payload, ...keys) {
 }
 
 function toMatchCardModel(raw, index) {
-  const id = String(raw?.id ?? raw?.match_id ?? `match-${index}`)
   return {
-    id,
+    id: String(raw?.id ?? raw?.match_id ?? `match-${index}`),
+    needId: raw?.needId ?? raw?.need_id ?? '',
+    volunteerId: raw?.volunteerId ?? raw?.volunteer_id ?? '',
     needTitle: raw?.needTitle ?? raw?.need_title ?? raw?.title ?? 'Untitled need',
     location: raw?.location ?? raw?.city ?? '—',
     severity: normalizeSeverity(raw?.severity),
@@ -52,7 +52,7 @@ function toMatchCardModel(raw, index) {
     performanceScore: Number(raw?.performanceScore ?? raw?.performance_score ?? 0),
     timeReported: raw?.timeReported ?? raw?.time_reported ?? raw?.reported_at ?? '—',
     status: normalizeStatus(raw?.status),
-    reason: raw?.reason ?? raw?.rationale ?? raw?.explanation ?? 'Gemini ranked this volunteer using skill fit, response time, location, and current workload.',
+    reason: raw?.reason ?? raw?.rationale ?? raw?.explanation ?? '',
   }
 }
 
@@ -68,12 +68,7 @@ function toUnmatchedNeed(raw, index) {
 
 function toAlert(raw, index) {
   const type = ['critical', 'warning', 'info'].includes(raw?.type) ? raw.type : 'info'
-  return {
-    id: String(raw?.id ?? `alert-${index}`),
-    type,
-    message: raw?.message ?? String(raw?.text ?? 'Alert'),
-    timestamp: raw?.timestamp ?? raw?.created_at ?? '',
-  }
+  return { id: String(raw?.id ?? `alert-${index}`), type, message: raw?.message ?? String(raw?.text ?? 'Alert'), timestamp: raw?.timestamp ?? raw?.created_at ?? '' }
 }
 
 function toActivity(raw, index) {
@@ -88,9 +83,47 @@ function toActivity(raw, index) {
   }
 }
 
+function SkeletonPulse({ width, height = '1rem', radius = '0.375rem', style }) {
+  return (
+    <div style={{
+      width, height, borderRadius: radius,
+      background: 'linear-gradient(90deg, var(--af-border) 25%, rgba(0,0,0,0.04) 50%, var(--af-border) 75%)',
+      backgroundSize: '200% 100%',
+      animation: 'shimmer 1.5s infinite',
+      ...style,
+    }} />
+  )
+}
+
+function MatchCardSkeleton() {
+  return (
+    <div className="af-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ height: 3, background: 'var(--af-border)' }} />
+      <div style={{ padding: '1.15rem 1.25rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.85rem' }}>
+          <div style={{ flex: 1 }}>
+            <SkeletonPulse width="70%" height="1.1rem" style={{ marginBottom: '0.5rem' }} />
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <SkeletonPulse width="100px" height="0.75rem" />
+              <SkeletonPulse width="80px" height="0.75rem" />
+            </div>
+          </div>
+          <SkeletonPulse width="56px" height="56px" radius="50%" />
+        </div>
+        <SkeletonPulse width="100%" height="100px" radius="0.5rem" style={{ marginBottom: '0.85rem' }} />
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <SkeletonPulse width="50%" height="36px" radius="0.5rem" />
+          <SkeletonPulse width="50%" height="36px" radius="0.5rem" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AIMatchingPage() {
-  const { data, isPending, isError, error, refetch } = useMatching()
+  const { data, isPending, isError, error, refetch, isFetching } = useMatching()
   const assignMatch = useAssignMatch()
+  const [severityFilter, setSeverityFilter] = useState('all')
 
   const parsed = useMemo(() => {
     const payload = data && typeof data === 'object' && !Array.isArray(data) ? data : { suggestions: data }
@@ -105,112 +138,173 @@ export default function AIMatchingPage() {
     return { matches, unmatched, alerts, activities, utilization, kpis, source, model }
   }, [data])
 
-  const utilizationData = parsed.utilization ?? { overloaded: 0, underutilized: 0, optimal: 0 }
+  const filteredMatches = useMemo(() => {
+    if (severityFilter === 'all') return parsed.matches
+    return parsed.matches.filter(m => m.severity === severityFilter)
+  }, [parsed.matches, severityFilter])
 
-  if (isPending) return <Loader fullPage />
   if (isError) return <ErrorState message={error?.message} onRetry={() => refetch()} />
 
+  const utilizationData = parsed.utilization ?? { overloaded: 0, underutilized: 0, optimal: 0 }
   const assignedCount = parsed.matches.filter(m => m.status === 'assigned').length
   const suggestedCount = parsed.matches.filter(m => m.status === 'suggested').length
-
   const kpiSuggested = parsed.kpis?.suggested_count ?? parsed.kpis?.suggestedCount ?? suggestedCount
   const kpiAssigned = parsed.kpis?.assigned_count ?? parsed.kpis?.assignedCount ?? assignedCount
   const kpiUnmatched = parsed.kpis?.unmatched_count ?? parsed.kpis?.unmatchedCount ?? parsed.unmatched.length
 
   return (
     <div className="af-dashboard">
+      {/* Shimmer animation */}
+      <style>{`@keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }`}</style>
+
+      {/* Header */}
       <div className="af-card" style={{
-        padding: '1.25rem',
-        background: 'linear-gradient(135deg, rgba(249,115,22,0.14), rgba(59,130,246,0.10))',
-        border: '1px solid rgba(249,115,22,0.22)',
+        padding: '1.25rem 1.5rem',
+        background: 'linear-gradient(135deg, rgba(249,115,22,0.08) 0%, rgba(14,165,233,0.08) 50%, rgba(139,92,246,0.06) 100%)',
+        border: '1px solid rgba(249,115,22,0.15)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.55rem' }}>
-              <span className="badge badge--warning" style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
-                <BrainCircuit size={14} /> Gemini dispatcher
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.6rem' }}>
+              <span style={{
+                display: 'inline-flex', gap: '0.3rem', alignItems: 'center',
+                fontSize: '0.68rem', fontWeight: 600, padding: '0.2rem 0.55rem', borderRadius: '9999px',
+                background: parsed.source === 'gemini' ? 'rgba(22,163,74,0.1)' : 'rgba(234,179,8,0.1)',
+                color: parsed.source === 'gemini' ? '#16a34a' : '#ca8a04',
+                border: `1px solid ${parsed.source === 'gemini' ? 'rgba(22,163,74,0.25)' : 'rgba(234,179,8,0.25)'}`,
+              }}>
+                <BrainCircuit size={12} />
+                {parsed.source === 'gemini' ? 'Gemini Live' : 'Local Engine'}
               </span>
-              <span className={`badge badge--${parsed.source === 'gemini' ? 'success' : 'warning'}`}>
-                {parsed.source === 'gemini' ? 'Live AI' : 'Fallback mode'}
+              <span style={{
+                fontSize: '0.65rem', color: 'var(--af-muted)',
+                display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+              }}>
+                <ShieldCheck size={11} /> {parsed.model}
               </span>
             </div>
-            <h1 style={{ fontSize: '1.65rem', fontWeight: 850, margin: '0 0 0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Sparkles size={24} style={{ color: 'var(--af-orange)' }} /> AI Volunteer Matching
+            <h1 style={{ fontSize: '1.55rem', fontWeight: 850, margin: '0 0 0.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Sparkles size={22} style={{ color: 'var(--af-orange)' }} /> AI Volunteer Matching
             </h1>
-            <p style={{ color: 'var(--af-muted)', fontSize: '0.92rem', margin: 0, maxWidth: 720 }}>
-              Gemini reviews open needs, volunteer skills, workload, location, and response history to recommend the fastest safe assignment path.
+            <p style={{ color: 'var(--af-muted)', fontSize: '0.85rem', margin: 0, maxWidth: 640 }}>
+              Intelligent need-to-volunteer assignment based on skills, proximity, availability, and past performance.
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--af-muted)', fontSize: '0.78rem', display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
-              <ShieldCheck size={14} /> Model: {parsed.model}
-            </span>
-            <button onClick={() => refetch()} className="btn btn--primary"><RefreshCcw size={15} /> Re-run Gemini</button>
-          </div>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="btn btn--primary"
+            style={{ opacity: isFetching ? 0.6 : 1, gap: '0.4rem' }}
+          >
+            <RefreshCcw size={15} className={isFetching ? 'af-spin' : ''} />
+            {isFetching ? 'Running...' : 'Re-run AI'}
+          </button>
         </div>
       </div>
 
       {/* KPIs */}
       <div className="af-metrics">
-        <KPICard title="Suggested" value={kpiSuggested} tone="warning" />
-        <KPICard title="Assigned (session)" value={kpiAssigned} tone="success" />
-        <KPICard title="Unmatched Needs" value={kpiUnmatched} tone="danger" />
+        <KPICard title="Suggested" value={isPending ? '—' : kpiSuggested} tone="warning" />
+        <KPICard title="Assigned" value={isPending ? '—' : kpiAssigned} tone="success" />
+        <KPICard title="Unmatched" value={isPending ? '—' : kpiUnmatched} tone="danger" />
       </div>
 
       {/* Main Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1.5rem', alignItems: 'start' }}>
-        {/* Left Column: Suggestions + Unmatched */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0 }}>
-            Gemini Recommendations ({parsed.matches.length})
-          </h2>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '1.25rem', alignItems: 'start' }}>
+        {/* Left Column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          {/* Sub-header with filter */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Zap size={16} style={{ color: 'var(--af-orange)' }} />
+              Recommendations
+              {!isPending && (
+                <span style={{
+                  fontSize: '0.7rem', fontWeight: 600, padding: '0.1rem 0.45rem', borderRadius: '9999px',
+                  background: 'rgba(14,165,233,0.1)', color: '#0284c7',
+                }}>{filteredMatches.length}</span>
+              )}
+            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <Filter size={13} style={{ color: 'var(--af-muted)' }} />
+              {['all', 'critical', 'high', 'medium', 'low'].map(sev => (
+                <button key={sev} onClick={() => setSeverityFilter(sev)} style={{
+                  fontSize: '0.68rem', fontWeight: 600, padding: '0.2rem 0.5rem', borderRadius: '9999px',
+                  border: '1px solid', cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.15s',
+                  background: severityFilter === sev ? 'var(--af-orange)' : 'transparent',
+                  color: severityFilter === sev ? '#fff' : 'var(--af-muted)',
+                  borderColor: severityFilter === sev ? 'var(--af-orange)' : 'var(--af-border)',
+                }}>
+                  {sev}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {parsed.matches.length === 0 ? (
-            <div className="empty-state">
+          {/* Match cards or skeletons */}
+          {isPending ? (
+            <>
+              <MatchCardSkeleton />
+              <MatchCardSkeleton />
+              <MatchCardSkeleton />
+            </>
+          ) : filteredMatches.length === 0 ? (
+            <div className="empty-state" style={{ padding: '3rem 1rem' }}>
               <Sparkles size={36} style={{ color: 'var(--af-muted)', marginBottom: '0.75rem' }} />
-              <h3 className="empty-state__title">No suggestions yet</h3>
-              <p className="empty-state__desc">When Gemini generates matches, they will appear here.</p>
+              <h3 className="empty-state__title">
+                {severityFilter !== 'all' ? `No ${severityFilter} matches` : 'No suggestions yet'}
+              </h3>
+              <p className="empty-state__desc">
+                {severityFilter !== 'all'
+                  ? 'Try changing the severity filter or re-run AI.'
+                  : 'When the AI generates matches, they will appear here.'}
+              </p>
             </div>
           ) : (
-            parsed.matches.map(match => (
+            filteredMatches.map(match => (
               <MatchCard
                 key={match.id}
                 match={match}
-                onAccept={() => assignMatch.mutate({ matchId: match.id })}
-                onReject={() => assignMatch.mutate({ matchId: match.id, action: 'reject' })}
+                isAssigning={assignMatch.isPending}
+                onAccept={() => assignMatch.mutate({ matchId: match.id, needId: match.needId, volunteerId: match.volunteerId })}
+                onReject={() => assignMatch.mutate({ matchId: match.id, needId: match.needId, volunteerId: match.volunteerId, action: 'reject' })}
                 onReassign={() => refetch()}
-                onViewDetails={() => {}}
               />
             ))
           )}
 
-          {parsed.unmatched.length > 0 && (
-            <div style={{ marginTop: '0.5rem' }}>
-              <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.75rem' }}>
-                Unmatched Needs ({parsed.unmatched.length})
+          {/* Unmatched Needs */}
+          {!isPending && parsed.unmatched.length > 0 && (
+            <div style={{ marginTop: '0.25rem' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 0.65rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                Unmatched Needs
+                <span style={{
+                  fontSize: '0.7rem', fontWeight: 600, padding: '0.1rem 0.45rem', borderRadius: '9999px',
+                  background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                }}>{parsed.unmatched.length}</span>
               </h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.65rem' }}>
                 {parsed.unmatched.map(need => <UnmatchedNeedCard key={need.id} need={need} />)}
               </div>
             </div>
           )}
         </div>
 
-        {/* Right Column: Controls + Utilization + Alerts + Activity */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {/* Right Column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', position: 'sticky', top: '1rem' }}>
           <ModelControlPanel />
-          <VolunteerUtilization data={utilizationData} />
+          {!isPending && <VolunteerUtilization data={utilizationData} />}
 
-          {parsed.alerts.length > 0 && (
+          {!isPending && parsed.alerts.length > 0 && (
             <div>
-              <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: '0 0 0.5rem' }}>Alerts</h3>
+              <h3 style={{ fontSize: '0.85rem', fontWeight: 650, margin: '0 0 0.45rem' }}>Alerts</h3>
               <AlertPanel alerts={parsed.alerts} />
             </div>
           )}
 
-          {parsed.activities.length > 0 && (
+          {!isPending && parsed.activities.length > 0 && (
             <div className="af-card af-activity" style={{ padding: '1rem' }}>
-              <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: '0 0 0.75rem' }}>Recent Activity</h3>
+              <h3 style={{ fontSize: '0.85rem', fontWeight: 650, margin: '0 0 0.65rem' }}>Recent Activity</h3>
               <ul className="af-activity__list" style={{ maxHeight: 'none' }}>
                 {parsed.activities.map(activity => (
                   <ActivityFeedItem key={activity.id} activity={activity} />
