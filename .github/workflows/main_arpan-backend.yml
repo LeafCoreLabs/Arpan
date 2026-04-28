@@ -50,5 +50,5 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: arpan-backend
-          package: backend
+          package: .
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
