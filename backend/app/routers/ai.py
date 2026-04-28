@@ -1,10 +1,13 @@
 import os
 import json
+import logging
 import math
 import re
 import socket
 from urllib import request, error
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -242,6 +245,7 @@ def _extract_json(text: str):
 def _call_groq(needs, volunteers, active_counts):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
+        logger.warning("GROQ_API_KEY not set, falling back to local scoring")
         return None
 
     system_msg = (
@@ -278,11 +282,20 @@ def _call_groq(needs, volunteers, active_counts):
         method="POST",
     )
     try:
-        with request.urlopen(req, timeout=10) as resp:
+        with request.urlopen(req, timeout=25) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
         text = payload["choices"][0]["message"]["content"]
+        logger.info("Groq API responded successfully")
         return _extract_json(text)
-    except (error.URLError, error.HTTPError, TimeoutError, socket.timeout, KeyError, IndexError, json.JSONDecodeError):
+    except error.HTTPError as e:
+        body_text = e.read().decode("utf-8", errors="replace") if hasattr(e, "read") else ""
+        logger.error("Groq HTTPError %s: %s — %s", e.code, e.reason, body_text[:500])
+        return None
+    except (error.URLError, TimeoutError, socket.timeout) as e:
+        logger.error("Groq network error: %s", e)
+        return None
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        logger.error("Groq response parse error: %s", e)
         return None
 
 @router.get("/suggestions")
