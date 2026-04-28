@@ -215,6 +215,7 @@ def seed_data():
         db.rollback()
         print(f"  Seed error: {e}")
         import traceback; traceback.print_exc()
+        raise
     finally:
         db.close()
 

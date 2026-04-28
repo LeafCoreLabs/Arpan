@@ -1,53 +1,175 @@
 import os
-import random
-from fastapi import APIRouter, Depends, HTTPException
+import json
+import math
+import re
+import socket
+from urllib import request, error
+from dotenv import load_dotenv
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import CommunityNeed, NeedStatus, Volunteer, VolunteerStatus, Task, TaskStatus, Activity
+from ..models import CommunityNeed, NeedStatus, Volunteer, VolunteerStatus, Task, TaskStatus
 from ..schemas import UserResponse as UserSchema
 from .auth import get_current_user
-import uuid
 
 router = APIRouter(prefix="/api/ai-matching", tags=["AI Matching"])
+load_dotenv()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
-def _score():
-    return random.randint(55, 98)
+SKILL_KEYWORDS = {
+    "medical": {"medical", "first-aid", "health", "counseling"},
+    "water": {"water", "logistics", "driving", "survey"},
+    "food": {"food", "distribution", "logistics", "driving"},
+    "shelter": {"shelter", "construction", "logistics"},
+    "safety": {"safety", "first-aid", "communication", "survey"},
+    "sanitation": {"sanitation", "cleanup", "survey", "logistics"},
+    "education": {"education", "child-care", "communication"},
+    "general": {"communication", "logistics", "survey"},
+}
 
-def _distance():
-    d = round(random.uniform(0.5, 8.0), 1)
-    return f"{d} km"
+def _clamp(value: float, low=0, high=100):
+    return int(max(low, min(high, round(value))))
 
-def _availability():
-    return random.choice(["Available now", "Available in 30m", "Available in 1h", "On standby"])
+def _skills(volunteer: Volunteer):
+    return {s.strip().lower() for s in (volunteer.skills or "").split(",") if s.strip()}
 
-@router.get("/suggestions")
-async def get_suggestions(db: Session = Depends(get_db), current_user: UserSchema = Depends(get_current_user)):
-    needs = db.query(CommunityNeed).filter(CommunityNeed.status == NeedStatus.UNASSIGNED).all()
-    all_vols = db.query(Volunteer).all()
-    available_vols = [v for v in all_vols if v.status == VolunteerStatus.AVAILABLE]
-    busy_vols = [v for v in all_vols if v.status == VolunteerStatus.BUSY]
+def _active_task_count(volunteer: Volunteer, db: Session):
+    return db.query(Task).filter(
+        Task.volunteerId == volunteer.id,
+        Task.status != TaskStatus.COMPLETED,
+    ).count()
 
+def _distance_km(need: CommunityNeed, volunteer: Volunteer):
+    if None in (need.lat, need.lng, volunteer.lat, volunteer.lng):
+        return 99.0
+    radius = 6371
+    lat1, lon1, lat2, lon2 = map(math.radians, [need.lat, need.lng, volunteer.lat, volunteer.lng])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return round(radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)), 1)
+
+def _skill_score(need: CommunityNeed, volunteer: Volunteer):
+    skill_set = _skills(volunteer)
+    issue = (need.issueType or "general").lower()
+    expected = SKILL_KEYWORDS.get(issue, SKILL_KEYWORDS["general"])
+    overlap = skill_set & expected
+    if issue in skill_set:
+        return 98
+    if overlap:
+        return _clamp(72 + len(overlap) * 8)
+    if skill_set & SKILL_KEYWORDS["general"]:
+        return 55
+    return 35
+
+def _distance_score(distance_km: float):
+    if distance_km <= 1:
+        return 98
+    if distance_km <= 3:
+        return _clamp(92 - distance_km * 6)
+    if distance_km <= 8:
+        return _clamp(82 - distance_km * 5)
+    return _clamp(45 - min(distance_km, 30))
+
+def _availability_score(volunteer: Volunteer, active_tasks: int):
+    status = volunteer.status.value if volunteer.status else "offline"
+    base = {"available": 96, "busy": 58, "offline": 15}.get(status, 30)
+    return _clamp(base - active_tasks * 14)
+
+def _performance_score(volunteer: Volunteer):
+    rating_score = ((volunteer.rating or 0) / 5) * 80
+    completion_bonus = min(volunteer.completedTasks or 0, 20)
+    return _clamp(rating_score + completion_bonus)
+
+def _availability_label(volunteer: Volunteer, active_tasks: int):
+    status = volunteer.status.value if volunteer.status else "offline"
+    if status == "available" and active_tasks == 0:
+        return "Available now"
+    if status == "available":
+        return f"Available, {active_tasks} active task(s)"
+    if status == "busy":
+        return f"Busy, {active_tasks} active task(s)"
+    return "Offline"
+
+def _severity_weight(need: CommunityNeed):
+    severity = need.severity.value if need.severity else "medium"
+    return {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(severity, 2)
+
+def _need_payload(need: CommunityNeed):
+    return {
+        "id": need.id,
+        "title": need.title,
+        "location": need.location,
+        "severity": need.severity.value if need.severity else "medium",
+        "status": need.status.value if need.status else "unassigned",
+        "issueType": need.issueType,
+        "peopleAffected": need.peopleAffected or 0,
+        "timeReported": need.timeReported or "recently",
+        "lat": need.lat,
+        "lng": need.lng,
+    }
+
+def _volunteer_payload(volunteer: Volunteer, db: Session):
+    active_tasks = db.query(Task).filter(
+        Task.volunteerId == volunteer.id,
+        Task.status != TaskStatus.COMPLETED,
+    ).count()
+    return {
+        "id": volunteer.id,
+        "name": volunteer.name,
+        "status": volunteer.status.value if volunteer.status else "offline",
+        "skills": volunteer.skills.split(",") if volunteer.skills else [],
+        "rating": volunteer.rating or 0,
+        "completedTasks": volunteer.completedTasks or 0,
+        "region": volunteer.region,
+        "responseTime": volunteer.responseTime,
+        "activeTasks": active_tasks,
+        "lat": volunteer.lat,
+        "lng": volunteer.lng,
+    }
+
+def _local_match_payload(needs, all_vols, candidate_vols, busy_vols, db: Session, source="local-fallback"):
     matches = []
     unmatched = []
+    used_volunteers = set()
 
-    for i, need in enumerate(needs):
-        if i < len(available_vols):
-            vol = available_vols[i]
-            skill_m = _score()
-            dist_m = _score()
-            avail_m = _score()
-            perf_m = _score()
-            total = int(skill_m * 0.35 + dist_m * 0.25 + avail_m * 0.20 + perf_m * 0.20)
+    sorted_needs = sorted(
+        needs,
+        key=lambda n: (_severity_weight(n), n.peopleAffected or 0),
+        reverse=True,
+    )
+
+    for need in sorted_needs:
+        ranked = []
+        for vol in candidate_vols:
+            if vol.id in used_volunteers:
+                continue
+            active_tasks = _active_task_count(vol, db)
+            distance_km = _distance_km(need, vol)
+            skill_m = _skill_score(need, vol)
+            dist_m = _distance_score(distance_km)
+            avail_m = _availability_score(vol, active_tasks)
+            perf_m = _performance_score(vol)
+            urgency_bonus = _severity_weight(need) * 2
+            total = _clamp(skill_m * 0.36 + dist_m * 0.24 + avail_m * 0.22 + perf_m * 0.18 + urgency_bonus)
+            ranked.append((total, skill_m, dist_m, avail_m, perf_m, distance_km, active_tasks, vol))
+
+        if ranked:
+            total, skill_m, dist_m, avail_m, perf_m, distance_km, active_tasks, vol = max(ranked, key=lambda item: item[0])
+            used_volunteers.add(vol.id)
             matches.append({
-                "id": f"match-{i+1}",
+                "id": f"match-{need.id}-{vol.id}",
+                "needId": need.id,
+                "volunteerId": vol.id,
                 "needTitle": need.title,
                 "location": need.location,
                 "severity": need.severity.value if need.severity else "medium",
                 "peopleAffected": need.peopleAffected or 0,
                 "volunteerName": vol.name,
                 "skills": vol.skills.split(",") if vol.skills else [],
-                "distance": _distance(),
-                "availability": _availability(),
+                "distance": f"{distance_km} km",
+                "availability": _availability_label(vol, active_tasks),
                 "matchScore": total,
                 "skillMatch": skill_m,
                 "distanceScore": dist_m,
@@ -55,6 +177,11 @@ async def get_suggestions(db: Session = Depends(get_db), current_user: UserSchem
                 "performanceScore": perf_m,
                 "timeReported": need.timeReported or "recently",
                 "status": "suggested",
+                "reason": (
+                    f"Matched from live database data: {vol.name} has {', '.join(vol.skills.split(',')) if vol.skills else 'no listed skills'}, "
+                    f"is {distance_km} km from the need, has {active_tasks} active task(s), "
+                    f"and a {vol.rating or 0}/5 volunteer rating."
+                ),
             })
         else:
             unmatched.append({
@@ -62,30 +189,23 @@ async def get_suggestions(db: Session = Depends(get_db), current_user: UserSchem
                 "title": need.title,
                 "location": need.location,
                 "severity": need.severity.value if need.severity else "medium",
-                "reason": "No available volunteer with matching skills in proximity.",
+                "reason": "No non-offline volunteer remains after prioritizing higher severity needs.",
             })
 
     assigned_count = db.query(Task).filter(Task.status != TaskStatus.COMPLETED).count()
-
-    overloaded = len([v for v in busy_vols if db.query(Task).filter(Task.volunteerId == v.id, Task.status != TaskStatus.COMPLETED).count() > 2])
-    underutil = len([v for v in available_vols if db.query(Task).filter(Task.volunteerId == v.id).count() == 0])
+    overloaded = len([
+        v for v in busy_vols
+        if db.query(Task).filter(Task.volunteerId == v.id, Task.status != TaskStatus.COMPLETED).count() > 2
+    ])
+    underutil = len([
+        v for v in candidate_vols
+        if db.query(Task).filter(Task.volunteerId == v.id).count() == 0
+    ])
     optimal = len(all_vols) - overloaded - underutil
 
-    activities_data = [
-        {"id": "ai-act-1", "type": "match_generated", "needTitle": matches[0]["needTitle"] if matches else "—", "volunteerName": matches[0]["volunteerName"] if matches else "—", "timestamp": "just now"},
-        {"id": "ai-act-2", "type": "match_accepted", "needTitle": "Ration distribution in Jahangirpuri", "volunteerName": "Anita Verma", "timestamp": "2 hours ago"},
-        {"id": "ai-act-3", "type": "task_completed", "needTitle": "Gas leak in Lajpat Nagar", "volunteerName": "Suresh Patel", "timestamp": "5 hours ago"},
-        {"id": "ai-act-4", "type": "match_generated", "needTitle": "Mobile health clinic", "volunteerName": "Meera Singh", "timestamp": "8 hours ago"},
-    ]
-
-    alerts_data = []
-    if len(unmatched) > 0:
-        alerts_data.append({"id": "ai-alert-1", "type": "warning", "message": f"{len(unmatched)} need(s) could not be matched to available volunteers", "timestamp": "just now"})
-    if overloaded > 0:
-        alerts_data.append({"id": "ai-alert-2", "type": "critical", "message": f"{overloaded} volunteer(s) are overloaded with >2 active tasks", "timestamp": "just now"})
-    alerts_data.append({"id": "ai-alert-3", "type": "info", "message": f"Model confidence threshold set at 70%. {len(matches)} suggestions generated.", "timestamp": "just now"})
-
     return {
+        "source": source,
+        "model": GEMINI_MODEL if source == "gemini" else "local-fallback",
         "matches": matches,
         "unmatched": unmatched,
         "kpis": {
@@ -98,8 +218,91 @@ async def get_suggestions(db: Session = Depends(get_db), current_user: UserSchem
             "underutilized": underutil,
             "optimal": max(optimal, 0),
         },
-        "alerts": alerts_data,
-        "activities": activities_data,
+        "alerts": [
+            *([{"id": "ai-alert-gemini", "type": "warning", "message": "Gemini is unavailable or quota-limited, so safe local scoring is active.", "timestamp": "just now"}] if source != "gemini" else []),
+            *([{"id": "ai-alert-1", "type": "warning", "message": f"{len(unmatched)} need(s) could not be matched to available volunteers", "timestamp": "just now"}] if unmatched else []),
+            {"id": "ai-alert-2", "type": "info", "message": f"{len(matches)} suggestions generated by {source}.", "timestamp": "just now"},
+        ],
+        "activities": [
+            {"id": "ai-act-1", "type": "match_generated", "needTitle": matches[0]["needTitle"] if matches else "—", "volunteerName": matches[0]["volunteerName"] if matches else "—", "timestamp": "just now"},
+            {"id": "ai-act-2", "type": "match_accepted", "needTitle": "Ration distribution in Jahangirpuri", "volunteerName": "Anita Verma", "timestamp": "2 hours ago"},
+            {"id": "ai-act-3", "type": "task_completed", "needTitle": "Gas leak in Lajpat Nagar", "volunteerName": "Suresh Patel", "timestamp": "5 hours ago"},
+        ],
+    }
+
+def _extract_json(text: str):
+    cleaned = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        if not match:
+            raise
+        return json.loads(match.group(0))
+
+def _call_gemini(needs, volunteers, db: Session):
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+
+    prompt = {
+        "role": "AI disaster-response dispatcher",
+        "instruction": (
+            "Match unassigned community needs to non-offline volunteers using only the supplied live data. "
+            "Do not invent volunteers, needs, locations, distances, or scores. Return only valid JSON. "
+            "Use this exact schema: {\"matches\": [...], \"unmatched\": [...], \"alerts\": [...], \"activities\": [...]}. "
+            "Each match must include id, needId, volunteerId, needTitle, location, severity, peopleAffected, "
+            "volunteerName, skills, distance, availability, matchScore, skillMatch, distanceScore, "
+            "availabilityScore, performanceScore, timeReported, status, reason. Scores are integers 0-100."
+        ),
+        "needs": [_need_payload(n) for n in needs],
+        "volunteers": [_volunteer_payload(v, db) for v in volunteers],
+    }
+    body = {
+        "contents": [{
+            "parts": [{
+                "text": json.dumps(prompt, ensure_ascii=False)
+            }]
+        }],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+        },
+    }
+    req = request.Request(
+        f"{GEMINI_URL}?key={api_key}",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=8) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        text = payload["candidates"][0]["content"]["parts"][0]["text"]
+        return _extract_json(text)
+    except (error.URLError, error.HTTPError, TimeoutError, socket.timeout, KeyError, IndexError, json.JSONDecodeError):
+        return None
+
+@router.get("/suggestions")
+async def get_suggestions(db: Session = Depends(get_db), current_user: UserSchema = Depends(get_current_user)):
+    needs = db.query(CommunityNeed).filter(CommunityNeed.status == NeedStatus.UNASSIGNED).all()
+    all_vols = db.query(Volunteer).all()
+    candidate_vols = [v for v in all_vols if v.status != VolunteerStatus.OFFLINE]
+    busy_vols = [v for v in all_vols if v.status == VolunteerStatus.BUSY]
+
+    fallback = _local_match_payload(needs, all_vols, candidate_vols, busy_vols, db)
+    gemini_result = _call_gemini(needs, candidate_vols, db)
+    if not gemini_result:
+        return fallback
+
+    return {
+        **fallback,
+        "source": "gemini",
+        "model": GEMINI_MODEL,
+        "matches": gemini_result.get("matches", fallback["matches"]),
+        "unmatched": gemini_result.get("unmatched", fallback["unmatched"]),
+        "alerts": gemini_result.get("alerts", fallback["alerts"]),
+        "activities": gemini_result.get("activities", fallback["activities"]),
     }
 
 

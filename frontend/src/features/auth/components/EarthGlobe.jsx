@@ -6,7 +6,6 @@ const GLOBE_RADIUS = 1;
 const NUM_CONNS = 42;
 const TOTAL_ARC_PTS = 100;
 const ROTATION_SPD = 0.0007;
-const TEX = 'https://unpkg.com/three-globe/example/img';
 
 function latLonToVec3(lat, lon, r = GLOBE_RADIUS) {
   const phi = (90 - lat) * (Math.PI / 180);
@@ -30,15 +29,16 @@ function buildStars(scene) {
 }
 
 function buildGlobe() {
-  const group = new THREE.Group(), loader = new THREE.TextureLoader();
+  const group = new THREE.Group();
   const earthMat = new THREE.MeshPhongMaterial({
-    map: loader.load(`${TEX}/earth-blue-marble.jpg`),
-    bumpMap: loader.load(`${TEX}/earth-topology.png`), bumpScale: 0.006,
-    specularMap: loader.load(`${TEX}/earth-water.png`), specular: new THREE.Color(0x2a5a7a), shininess: 18,
+    color: 0x0b63a8,
+    emissive: new THREE.Color(0x031d36),
+    specular: new THREE.Color(0x2a5a7a),
+    shininess: 18,
   });
   group.add(new THREE.Mesh(new THREE.SphereGeometry(GLOBE_RADIUS, 64, 64), earthMat));
 
-  const cloudMat = new THREE.MeshPhongMaterial({ map: loader.load(`${TEX}/earth-clouds.png`), transparent: true, opacity: 0.38, depthWrite: false });
+  const cloudMat = new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 0.12, depthWrite: false });
   const cloudMesh = new THREE.Mesh(new THREE.SphereGeometry(GLOBE_RADIUS * 1.006, 64, 64), cloudMat);
   group.add(cloudMesh);
 

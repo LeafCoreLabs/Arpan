@@ -1,7 +1,10 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from .routers import auth, dashboard, needs, map, volunteers, tasks, ai, notifications, reports, events, profile
+from .database import SessionLocal
+from .models import User, CommunityNeed, Volunteer
 
 app = FastAPI(title="Arpan Backend API", version="1.0.0")
 
@@ -35,3 +38,18 @@ app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
 @app.get("/")
 def read_root():
     return {"message": "Arpan API is running"}
+
+@app.get("/health")
+def health_check():
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        return {
+            "status": "ok",
+            "database": "connected",
+            "users": db.query(User).count(),
+            "needs": db.query(CommunityNeed).count(),
+            "volunteers": db.query(Volunteer).count(),
+        }
+    finally:
+        db.close()

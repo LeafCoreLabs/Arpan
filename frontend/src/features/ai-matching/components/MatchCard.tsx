@@ -18,6 +18,7 @@ interface MatchCardProps {
     performanceScore: number;
     timeReported: string;
     status: 'suggested' | 'assigned' | 'rejected';
+    reason?: string;
   };
   onAccept: () => void;
   onReject: () => void;
@@ -81,7 +82,7 @@ export function MatchCard({ match, onAccept, onReject, onReassign, onViewDetails
       {/* Score Panel */}
       <div style={{ background: 'var(--af-card)', border: '1px solid var(--af-border)', borderRadius: '0.5rem', padding: '0.75rem', marginBottom: '0.75rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>AI Match Score</span>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Gemini Match Score</span>
           <span style={{ fontSize: '1.5rem', fontWeight: 800, color: scoreColor }}>{match.matchScore}%</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
@@ -91,6 +92,21 @@ export function MatchCard({ match, onAccept, onReject, onReassign, onViewDetails
           <ScoreBar label="Performance" value={match.performanceScore} />
         </div>
       </div>
+
+      {match.reason ? (
+        <div style={{
+          border: '1px solid rgba(249,115,22,0.22)',
+          background: 'rgba(249,115,22,0.07)',
+          borderRadius: '0.5rem',
+          padding: '0.7rem',
+          color: 'var(--af-text)',
+          fontSize: '0.76rem',
+          lineHeight: 1.5,
+          marginBottom: '0.75rem',
+        }}>
+          <strong>Gemini rationale:</strong> {match.reason}
+        </div>
+      ) : null}
 
       {/* Footer */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.7rem', color: 'var(--af-muted)', marginBottom: '0.75rem' }}>

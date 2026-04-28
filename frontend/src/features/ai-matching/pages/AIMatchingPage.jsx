@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Sparkles, RefreshCcw } from 'lucide-react'
+import { Sparkles, RefreshCcw, BrainCircuit, ShieldCheck } from 'lucide-react'
 import { ErrorState } from '../../../components/common/ErrorState.jsx'
 import { Loader } from '../../../components/ui/Loader.jsx'
 import { extractList } from '../../../utils/apiResponse.js'
@@ -52,6 +52,7 @@ function toMatchCardModel(raw, index) {
     performanceScore: Number(raw?.performanceScore ?? raw?.performance_score ?? 0),
     timeReported: raw?.timeReported ?? raw?.time_reported ?? raw?.reported_at ?? '—',
     status: normalizeStatus(raw?.status),
+    reason: raw?.reason ?? raw?.rationale ?? raw?.explanation ?? 'Gemini ranked this volunteer using skill fit, response time, location, and current workload.',
   }
 }
 
@@ -99,7 +100,9 @@ export default function AIMatchingPage() {
     const activities = listFromPayload(payload, 'activity', 'activities', 'recent_activity').map(toActivity)
     const utilization = payload.volunteer_utilization ?? payload.volunteerUtilization
     const kpis = payload.kpis ?? payload.stats
-    return { matches, unmatched, alerts, activities, utilization, kpis }
+    const source = payload.source ?? payload.provider ?? 'local-fallback'
+    const model = payload.model ?? (source === 'gemini' ? 'gemini-3-flash-preview' : 'local-fallback')
+    return { matches, unmatched, alerts, activities, utilization, kpis, source, model }
   }, [data])
 
   const utilizationData = parsed.utilization ?? { overloaded: 0, underutilized: 0, optimal: 0 }
@@ -116,17 +119,35 @@ export default function AIMatchingPage() {
 
   return (
     <div className="af-dashboard">
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: '0 0 0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Sparkles size={22} style={{ color: 'var(--af-orange)' }} /> AI Matching Engine
-          </h1>
-          <p style={{ color: 'var(--af-muted)', fontSize: '0.9rem', margin: 0 }}>
-            Review model suggestions, tune weights, and assign volunteers to open needs.
-          </p>
+      <div className="af-card" style={{
+        padding: '1.25rem',
+        background: 'linear-gradient(135deg, rgba(249,115,22,0.14), rgba(59,130,246,0.10))',
+        border: '1px solid rgba(249,115,22,0.22)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.55rem' }}>
+              <span className="badge badge--warning" style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
+                <BrainCircuit size={14} /> Gemini dispatcher
+              </span>
+              <span className={`badge badge--${parsed.source === 'gemini' ? 'success' : 'warning'}`}>
+                {parsed.source === 'gemini' ? 'Live AI' : 'Fallback mode'}
+              </span>
+            </div>
+            <h1 style={{ fontSize: '1.65rem', fontWeight: 850, margin: '0 0 0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Sparkles size={24} style={{ color: 'var(--af-orange)' }} /> AI Volunteer Matching
+            </h1>
+            <p style={{ color: 'var(--af-muted)', fontSize: '0.92rem', margin: 0, maxWidth: 720 }}>
+              Gemini reviews open needs, volunteer skills, workload, location, and response history to recommend the fastest safe assignment path.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--af-muted)', fontSize: '0.78rem', display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}>
+              <ShieldCheck size={14} /> Model: {parsed.model}
+            </span>
+            <button onClick={() => refetch()} className="btn btn--primary"><RefreshCcw size={15} /> Re-run Gemini</button>
+          </div>
         </div>
-        <button onClick={() => refetch()} className="btn btn--ghost"><RefreshCcw size={15} /> Re-run Matching</button>
       </div>
 
       {/* KPIs */}
@@ -141,14 +162,14 @@ export default function AIMatchingPage() {
         {/* Left Column: Suggestions + Unmatched */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0 }}>
-            Suggestions ({parsed.matches.length})
+            Gemini Recommendations ({parsed.matches.length})
           </h2>
 
           {parsed.matches.length === 0 ? (
             <div className="empty-state">
               <Sparkles size={36} style={{ color: 'var(--af-muted)', marginBottom: '0.75rem' }} />
               <h3 className="empty-state__title">No suggestions yet</h3>
-              <p className="empty-state__desc">When the AI model generates matches, they will appear here.</p>
+              <p className="empty-state__desc">When Gemini generates matches, they will appear here.</p>
             </div>
           ) : (
             parsed.matches.map(match => (

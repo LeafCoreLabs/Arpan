@@ -18,7 +18,14 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (r) => r,
   (err) => {
-    const message = err.response?.data?.message ?? err.message ?? 'Request failed'
+    if (err.response?.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      if (window.location.pathname !== '/login') {
+        window.location.assign('/login')
+      }
+    }
+    const message = err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? 'Request failed'
     return Promise.reject(new Error(message))
   }
 )

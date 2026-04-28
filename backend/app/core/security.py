@@ -2,12 +2,15 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional, Any, Union
 from jose import jwt
+from dotenv import load_dotenv
 from passlib.context import CryptContext
+
+load_dotenv()
 
 # Secret key to sign JWT token (Should be loaded from env in production)
 SECRET_KEY = os.getenv("SECRET_KEY", "aidflow-super-secret-key-for-dev-only")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

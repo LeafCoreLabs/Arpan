@@ -24,8 +24,11 @@ export function ModelControlPanel() {
   return (
     <div className="af-card" style={{ padding: '1.25rem' }}>
       <h3 style={{ margin: '0 0 1rem', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <Sliders size={18} style={{ color: 'var(--af-orange)' }} /> Model Control Panel
+        <Sliders size={18} style={{ color: 'var(--af-orange)' }} /> Gemini Control Panel
       </h3>
+      <p style={{ margin: '-0.45rem 0 1rem', color: 'var(--af-muted)', fontSize: '0.75rem', lineHeight: 1.45 }}>
+        Tune how much context the dispatcher emphasizes when generating recommendations.
+      </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {weightItems.map(item => (
