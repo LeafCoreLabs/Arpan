@@ -13,7 +13,7 @@ class ProfileUpdate(BaseModel):
     skills: Optional[str] = None
     region: Optional[str] = None
 
-@router.get("/")
+@router.get("")
 def get_profile(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     profile = {
         "id": current_user.id, "email": current_user.email,
@@ -31,7 +31,7 @@ def get_profile(db: Session = Depends(get_db), current_user: User = Depends(get_
             })
     return profile
 
-@router.put("/")
+@router.put("")
 def update_profile(updates: ProfileUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if updates.full_name is not None:
         current_user.full_name = updates.full_name

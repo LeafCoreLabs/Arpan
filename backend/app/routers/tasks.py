@@ -16,7 +16,7 @@ class TaskStatusUpdate(BaseModel):
     status: str  # pending, in-progress, completed, delayed
 
 # ── List all tasks ──
-@router.get("/")
+@router.get("")
 def get_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     tasks = db.query(Task).order_by(Task.created_at.desc()).all()
     return [{
@@ -31,7 +31,7 @@ def get_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_cu
     } for t in tasks]
 
 # ── Assign a volunteer to a need ──
-@router.post("/")
+@router.post("")
 def assign_task(assignment: AssignmentRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     need = db.query(CommunityNeed).filter(CommunityNeed.id == assignment.needId).first()
     if not need:

@@ -6,7 +6,7 @@ from .routers import auth, dashboard, needs, map, volunteers, tasks, ai, notific
 from .database import SessionLocal
 from .models import User, CommunityNeed, Volunteer
 
-app = FastAPI(title="Arpan Backend API", version="1.0.0")
+app = FastAPI(title="Arpan Backend API", version="1.0.0", redirect_slashes=False)
 
 # Setup CORS for the frontend
 cors_origins = [

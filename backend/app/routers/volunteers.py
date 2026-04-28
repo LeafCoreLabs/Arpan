@@ -20,7 +20,7 @@ class StatusUpdate(BaseModel):
     status: str  # available, busy, offline
 
 # ── List all volunteers ──
-@router.get("/")
+@router.get("")
 def get_volunteers(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     volunteers = db.query(Volunteer).all()
     return [{
@@ -33,7 +33,7 @@ def get_volunteers(db: Session = Depends(get_db), current_user: User = Depends(g
     } for v in volunteers]
 
 # ── Create a volunteer profile ──
-@router.post("/")
+@router.post("")
 def create_volunteer(vol: VolunteerCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Check if user already has a volunteer profile
     existing = db.query(Volunteer).filter(Volunteer.user_id == current_user.id).first()

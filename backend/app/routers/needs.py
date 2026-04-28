@@ -27,7 +27,7 @@ class NeedUpdate(BaseModel):
     priority: Optional[int] = None
 
 # ── List all needs ──
-@router.get("/")
+@router.get("")
 def get_needs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     needs = db.query(CommunityNeed).order_by(CommunityNeed.created_at.desc()).all()
     return [{
@@ -62,7 +62,7 @@ def get_feed(db: Session = Depends(get_db), current_user: User = Depends(get_cur
 
 
 # ── Create a new need (any authenticated user) ──
-@router.post("/")
+@router.post("")
 def create_need(need: NeedCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     need_id = f"n-{str(uuid.uuid4())[:8]}"
     severity_map = {"critical": NeedSeverity.CRITICAL, "high": NeedSeverity.HIGH, "medium": NeedSeverity.MEDIUM, "low": NeedSeverity.LOW}

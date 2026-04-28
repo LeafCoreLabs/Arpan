@@ -20,7 +20,7 @@ class EventCreate(BaseModel):
     category: str = "general"
     spots: int = 50
 
-@router.get("/")
+@router.get("")
 def list_events(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     events = db.query(Event).order_by(Event.created_at.desc()).all()
     result = []
@@ -38,7 +38,7 @@ def list_events(db: Session = Depends(get_db), current_user: User = Depends(get_
         })
     return result
 
-@router.post("/")
+@router.post("")
 def create_event(payload: EventCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.role != UserRole.COORDINATOR:
         raise HTTPException(status_code=403, detail="Only coordinators can create events")

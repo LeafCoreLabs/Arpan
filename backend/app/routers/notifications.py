@@ -14,7 +14,7 @@ def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_c
     return [{"id": a.id, "type": a.type, "message": a.message, "location": a.location, "time": a.time} for a in alerts]
 
 # ── User notifications ──
-@router.get("/")
+@router.get("")
 def get_notifications(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     notifs = db.query(Notification).filter(Notification.user_id == current_user.id).order_by(Notification.created_at.desc()).limit(50).all()
     return [{
