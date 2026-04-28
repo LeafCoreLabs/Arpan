@@ -203,6 +203,16 @@ def seed_data():
                 Notification(id=f"notif-cu-2", user_id=community_user.id, title="Need Resolved!", message="Water shortage in Block A is being addressed. Thank you for reporting!", type="success"),
                 Notification(id=f"notif-cu-3", user_id=community_user.id, title="Community Update", message="5 needs were resolved in your area this week.", type="info"),
             ])
+        if admin and not db.query(Notification).filter(Notification.user_id == admin.id).first():
+            db.add_all([
+                Notification(id=f"notif-admin-1", user_id=admin.id, title="System Online", message="Arpan platform is fully operational. All services running.", type="success"),
+                Notification(id=f"notif-admin-2", user_id=admin.id, title="Critical Need Reported", message="Water shortage in Block A, Sector 12 — 350 people affected. Immediate action required.", type="warning"),
+                Notification(id=f"notif-admin-3", user_id=admin.id, title="Volunteer Joined", message="Ravi Kumar has been approved and is now active. Skills: first-aid, logistics.", type="info"),
+                Notification(id=f"notif-admin-4", user_id=admin.id, title="Task Completed", message="Medical supply delivery to Shelter B completed by Anita Verma.", type="success"),
+                Notification(id=f"notif-admin-5", user_id=admin.id, title="AI Match Available", message="3 new AI-generated volunteer-need matches are ready for review.", type="info"),
+                Notification(id=f"notif-admin-6", user_id=admin.id, title="Event Registration Surge", message="Community Cleanup Drive has 25/30 spots filled. Consider adding capacity.", type="warning"),
+                Notification(id=f"notif-admin-7", user_id=admin.id, title="Weekly Report Ready", message="This week: 12 tasks completed, 5 needs resolved, 2 new volunteers onboarded.", type="info"),
+            ])
         db.commit()
         print("  Notifications seeded")
 

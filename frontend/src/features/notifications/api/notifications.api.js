@@ -1,7 +1,7 @@
 import { apiClient } from '../../../services/apiClient.js'
 
 export async function fetchNotifications(params) {
-  const { data } = await apiClient.get('/api/notifications/alerts', { params })
+  const { data } = await apiClient.get('/api/notifications', { params })
   return data
 }
 
