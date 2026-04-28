@@ -161,19 +161,19 @@ def list_pending_volunteers(db: Session = Depends(get_db), current_user: User = 
     if current_user.role != UserRole.COORDINATOR:
         raise HTTPException(status_code=403, detail="Only coordinators can view pending volunteers")
 
-    pending = db.query(User).filter(User.role == UserRole.VOLUNTEER, User.is_approved == False).all()
-    result = []
-    for u in pending:
-        vol = db.query(Volunteer).filter(Volunteer.user_id == u.id).first()
-        result.append({
-            "id": u.id,
-            "email": u.email,
-            "name": u.full_name,
-            "skills": vol.skills if vol else "",
-            "region": vol.region if vol else "",
-            "created_at": str(u.created_at) if u.created_at else ""
-        })
-    return result
+    from sqlalchemy.orm import joinedload
+    pending = (
+        db.query(User)
+        .options(joinedload(User.volunteer_profile))
+        .filter(User.role == UserRole.VOLUNTEER, User.is_approved == False)
+        .all()
+    )
+    return [{
+        "id": u.id, "email": u.email, "name": u.full_name,
+        "skills": u.volunteer_profile.skills if u.volunteer_profile else "",
+        "region": u.volunteer_profile.region if u.volunteer_profile else "",
+        "created_at": str(u.created_at) if u.created_at else "",
+    } for u in pending]
 
 # ── Coordinator: Approve a volunteer ──
 @router.post("/approve-volunteer/{user_id}")

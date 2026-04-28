@@ -7,9 +7,11 @@ from urllib import request, error
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from ..database import get_db
 from ..models import CommunityNeed, NeedStatus, Volunteer, VolunteerStatus, Task, TaskStatus
 from ..schemas import UserResponse as UserSchema
+from ..core.cache import cache_get, cache_set, cache_delete
 from .auth import get_current_user
 
 router = APIRouter(prefix="/api/ai-matching", tags=["AI Matching"])
@@ -28,17 +30,12 @@ SKILL_KEYWORDS = {
     "general": {"communication", "logistics", "survey"},
 }
 
+
 def _clamp(value: float, low=0, high=100):
     return int(max(low, min(high, round(value))))
 
 def _skills(volunteer: Volunteer):
     return {s.strip().lower() for s in (volunteer.skills or "").split(",") if s.strip()}
-
-def _active_task_count(volunteer: Volunteer, db: Session):
-    return db.query(Task).filter(
-        Task.volunteerId == volunteer.id,
-        Task.status != TaskStatus.COMPLETED,
-    ).count()
 
 def _distance_km(need: CommunityNeed, volunteer: Volunteer):
     if None in (need.lat, need.lng, volunteer.lat, volunteer.lng):
@@ -98,38 +95,52 @@ def _severity_weight(need: CommunityNeed):
 
 def _need_payload(need: CommunityNeed):
     return {
-        "id": need.id,
-        "title": need.title,
-        "location": need.location,
+        "id": need.id, "title": need.title, "location": need.location,
         "severity": need.severity.value if need.severity else "medium",
         "status": need.status.value if need.status else "unassigned",
-        "issueType": need.issueType,
-        "peopleAffected": need.peopleAffected or 0,
+        "issueType": need.issueType, "peopleAffected": need.peopleAffected or 0,
         "timeReported": need.timeReported or "recently",
-        "lat": need.lat,
-        "lng": need.lng,
+        "lat": need.lat, "lng": need.lng,
     }
 
-def _volunteer_payload(volunteer: Volunteer, db: Session):
-    active_tasks = db.query(Task).filter(
-        Task.volunteerId == volunteer.id,
-        Task.status != TaskStatus.COMPLETED,
-    ).count()
+def _volunteer_payload(volunteer: Volunteer, active_tasks: int):
     return {
-        "id": volunteer.id,
-        "name": volunteer.name,
+        "id": volunteer.id, "name": volunteer.name,
         "status": volunteer.status.value if volunteer.status else "offline",
         "skills": volunteer.skills.split(",") if volunteer.skills else [],
         "rating": volunteer.rating or 0,
         "completedTasks": volunteer.completedTasks or 0,
-        "region": volunteer.region,
-        "responseTime": volunteer.responseTime,
+        "region": volunteer.region, "responseTime": volunteer.responseTime,
         "activeTasks": active_tasks,
-        "lat": volunteer.lat,
-        "lng": volunteer.lng,
+        "lat": volunteer.lat, "lng": volunteer.lng,
     }
 
+
+def _batch_active_task_counts(db: Session) -> dict:
+    """Single query to get active task counts for ALL volunteers."""
+    rows = (
+        db.query(Task.volunteerId, func.count(Task.id))
+        .filter(Task.status != TaskStatus.COMPLETED)
+        .group_by(Task.volunteerId)
+        .all()
+    )
+    return {vid: cnt for vid, cnt in rows}
+
+
+def _batch_total_task_counts(db: Session) -> dict:
+    """Single query to get total task counts for ALL volunteers."""
+    rows = (
+        db.query(Task.volunteerId, func.count(Task.id))
+        .group_by(Task.volunteerId)
+        .all()
+    )
+    return {vid: cnt for vid, cnt in rows}
+
+
 def _local_match_payload(needs, all_vols, candidate_vols, busy_vols, db: Session, source="local-fallback"):
+    active_counts = _batch_active_task_counts(db)
+    total_counts = _batch_total_task_counts(db)
+
     matches = []
     unmatched = []
     used_volunteers = set()
@@ -145,7 +156,7 @@ def _local_match_payload(needs, all_vols, candidate_vols, busy_vols, db: Session
         for vol in candidate_vols:
             if vol.id in used_volunteers:
                 continue
-            active_tasks = _active_task_count(vol, db)
+            active_tasks = active_counts.get(vol.id, 0)
             distance_km = _distance_km(need, vol)
             skill_m = _skill_score(need, vol)
             dist_m = _distance_score(distance_km)
@@ -160,20 +171,16 @@ def _local_match_payload(needs, all_vols, candidate_vols, busy_vols, db: Session
             used_volunteers.add(vol.id)
             matches.append({
                 "id": f"match-{need.id}-{vol.id}",
-                "needId": need.id,
-                "volunteerId": vol.id,
-                "needTitle": need.title,
-                "location": need.location,
+                "needId": need.id, "volunteerId": vol.id,
+                "needTitle": need.title, "location": need.location,
                 "severity": need.severity.value if need.severity else "medium",
                 "peopleAffected": need.peopleAffected or 0,
                 "volunteerName": vol.name,
                 "skills": vol.skills.split(",") if vol.skills else [],
                 "distance": f"{distance_km} km",
                 "availability": _availability_label(vol, active_tasks),
-                "matchScore": total,
-                "skillMatch": skill_m,
-                "distanceScore": dist_m,
-                "availabilityScore": avail_m,
+                "matchScore": total, "skillMatch": skill_m,
+                "distanceScore": dist_m, "availabilityScore": avail_m,
                 "performanceScore": perf_m,
                 "timeReported": need.timeReported or "recently",
                 "status": "suggested",
@@ -185,22 +192,14 @@ def _local_match_payload(needs, all_vols, candidate_vols, busy_vols, db: Session
             })
         else:
             unmatched.append({
-                "id": need.id,
-                "title": need.title,
-                "location": need.location,
+                "id": need.id, "title": need.title, "location": need.location,
                 "severity": need.severity.value if need.severity else "medium",
                 "reason": "No non-offline volunteer remains after prioritizing higher severity needs.",
             })
 
-    assigned_count = db.query(Task).filter(Task.status != TaskStatus.COMPLETED).count()
-    overloaded = len([
-        v for v in busy_vols
-        if db.query(Task).filter(Task.volunteerId == v.id, Task.status != TaskStatus.COMPLETED).count() > 2
-    ])
-    underutil = len([
-        v for v in candidate_vols
-        if db.query(Task).filter(Task.volunteerId == v.id).count() == 0
-    ])
+    assigned_count = sum(active_counts.values())
+    overloaded = sum(1 for v in busy_vols if active_counts.get(v.id, 0) > 2)
+    underutil = sum(1 for v in candidate_vols if total_counts.get(v.id, 0) == 0)
     optimal = len(all_vols) - overloaded - underutil
 
     return {
@@ -240,7 +239,7 @@ def _extract_json(text: str):
             raise
         return json.loads(match.group(0))
 
-def _call_gemini(needs, volunteers, db: Session):
+def _call_gemini(needs, volunteers, active_counts):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return None
@@ -256,18 +255,11 @@ def _call_gemini(needs, volunteers, db: Session):
             "availabilityScore, performanceScore, timeReported, status, reason. Scores are integers 0-100."
         ),
         "needs": [_need_payload(n) for n in needs],
-        "volunteers": [_volunteer_payload(v, db) for v in volunteers],
+        "volunteers": [_volunteer_payload(v, active_counts.get(v.id, 0)) for v in volunteers],
     }
     body = {
-        "contents": [{
-            "parts": [{
-                "text": json.dumps(prompt, ensure_ascii=False)
-            }]
-        }],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-        },
+        "contents": [{"parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
+        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
     }
     req = request.Request(
         f"{GEMINI_URL}?key={api_key}",
@@ -285,17 +277,23 @@ def _call_gemini(needs, volunteers, db: Session):
 
 @router.get("/suggestions")
 async def get_suggestions(db: Session = Depends(get_db), current_user: UserSchema = Depends(get_current_user)):
+    cached = cache_get("ai:suggestions")
+    if cached:
+        return cached
+
     needs = db.query(CommunityNeed).filter(CommunityNeed.status == NeedStatus.UNASSIGNED).all()
     all_vols = db.query(Volunteer).all()
     candidate_vols = [v for v in all_vols if v.status != VolunteerStatus.OFFLINE]
     busy_vols = [v for v in all_vols if v.status == VolunteerStatus.BUSY]
+    active_counts = _batch_active_task_counts(db)
 
     fallback = _local_match_payload(needs, all_vols, candidate_vols, busy_vols, db)
-    gemini_result = _call_gemini(needs, candidate_vols, db)
+    gemini_result = _call_gemini(needs, candidate_vols, active_counts)
     if not gemini_result:
+        cache_set("ai:suggestions", fallback, ttl=120)
         return fallback
 
-    return {
+    result = {
         **fallback,
         "source": "gemini",
         "model": GEMINI_MODEL,
@@ -304,6 +302,8 @@ async def get_suggestions(db: Session = Depends(get_db), current_user: UserSchem
         "alerts": gemini_result.get("alerts", fallback["alerts"]),
         "activities": gemini_result.get("activities", fallback["activities"]),
     }
+    cache_set("ai:suggestions", result, ttl=120)
+    return result
 
 
 @router.post("/assign")
@@ -314,4 +314,5 @@ async def assign_match(payload: dict, db: Session = Depends(get_db), current_use
     if action == "reject":
         return {"status": "rejected", "message": f"Match {match_id} rejected."}
 
+    cache_delete("ai:suggestions")
     return {"status": "success", "message": f"Match {match_id} accepted and assigned."}

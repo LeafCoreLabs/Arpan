@@ -1,9 +1,10 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from ..database import get_db
 from ..models import Task, CommunityNeed, Volunteer, NeedStatus, TaskStatus, Activity, User, VolunteerStatus
+from ..core.cache import cache_get, cache_set, cache_delete
 from .auth import get_current_user
 
 router = APIRouter()
@@ -13,67 +14,57 @@ class AssignmentRequest(BaseModel):
     volunteerId: str
 
 class TaskStatusUpdate(BaseModel):
-    status: str  # pending, in-progress, completed, delayed
+    status: str
 
-# ── List all tasks ──
 @router.get("")
 def get_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    tasks = db.query(Task).order_by(Task.created_at.desc()).all()
-    return [{
-        "id": t.id,
-        "needId": t.needId,
-        "volunteerId": t.volunteerId,
-        "status": t.status.value if t.status else "pending",
-        "assignedAt": t.assignedAt,
-        "eta": t.eta,
-        "needTitle": t.need.title if t.need else "Unknown",
-        "volunteerName": t.volunteer.name if t.volunteer else "Unknown"
-    } for t in tasks]
+    cached = cache_get("tasks:all")
+    if cached:
+        return cached
 
-# ── Assign a volunteer to a need ──
+    tasks = (
+        db.query(Task)
+        .options(joinedload(Task.need), joinedload(Task.volunteer))
+        .order_by(Task.created_at.desc())
+        .all()
+    )
+    result = [{
+        "id": t.id, "needId": t.needId, "volunteerId": t.volunteerId,
+        "status": t.status.value if t.status else "pending",
+        "assignedAt": t.assignedAt, "eta": t.eta,
+        "needTitle": t.need.title if t.need else "Unknown",
+        "volunteerName": t.volunteer.name if t.volunteer else "Unknown",
+    } for t in tasks]
+    cache_set("tasks:all", result, ttl=60)
+    return result
+
 @router.post("")
 def assign_task(assignment: AssignmentRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     need = db.query(CommunityNeed).filter(CommunityNeed.id == assignment.needId).first()
     if not need:
         raise HTTPException(status_code=404, detail="Need not found")
-
     volunteer = db.query(Volunteer).filter(Volunteer.id == assignment.volunteerId).first()
     if not volunteer:
         raise HTTPException(status_code=404, detail="Volunteer not found")
 
     task_id = f"t-{str(uuid.uuid4())[:8]}"
-    new_task = Task(
-        id=task_id,
-        needId=assignment.needId,
-        volunteerId=assignment.volunteerId,
-        status=TaskStatus.PENDING,
-        assignedAt="just now",
-        eta="Pending"
-    )
-
+    new_task = Task(id=task_id, needId=assignment.needId, volunteerId=assignment.volunteerId, status=TaskStatus.PENDING, assignedAt="just now", eta="Pending")
     need.status = NeedStatus.ASSIGNED
     volunteer.status = VolunteerStatus.BUSY
-
-    # Log activity
     act_id = f"act-{str(uuid.uuid4())[:8]}"
     db.add(Activity(id=act_id, kind="success", text=f"{volunteer.name} assigned to '{need.title}'", time="just now"))
-
     db.add(new_task)
     db.commit()
-
+    cache_delete("tasks:all", "dashboard:summary", "needs:*", "volunteers:all", "ai:suggestions")
     return {"message": "Task assigned successfully", "taskId": task_id}
 
-# ── Update task status ──
 @router.put("/{task_id}/status")
 def update_task_status(task_id: str, body: TaskStatusUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-
     status_map = {"pending": TaskStatus.PENDING, "in-progress": TaskStatus.IN_PROGRESS, "completed": TaskStatus.COMPLETED, "delayed": TaskStatus.DELAYED}
     task.status = status_map.get(body.status, task.status)
-
-    # If completed, update need and volunteer
     if body.status == "completed":
         if task.need:
             task.need.status = NeedStatus.RESOLVED
@@ -87,6 +78,6 @@ def update_task_status(task_id: str, body: TaskStatusUpdate, db: Session = Depen
             task.need.status = NeedStatus.IN_PROGRESS
         act_id = f"act-{str(uuid.uuid4())[:8]}"
         db.add(Activity(id=act_id, kind="alert", text=f"Task '{task.need.title if task.need else task_id}' is now in progress", time="just now"))
-
     db.commit()
+    cache_delete("tasks:all", "dashboard:summary", "needs:*", "volunteers:all", "ai:suggestions")
     return {"message": "Task status updated"}

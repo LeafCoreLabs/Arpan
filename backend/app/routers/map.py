@@ -2,12 +2,17 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import CommunityNeed, Volunteer, Task, Alert, User
+from ..core.cache import cache_get, cache_set
 from .auth import get_current_user
 
 router = APIRouter()
 
 @router.get("/data")
 def get_map_data(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    cached = cache_get("map:data")
+    if cached:
+        return cached
+
     needs = db.query(CommunityNeed).all()
     volunteers = db.query(Volunteer).all()
     tasks = db.query(Task).all()
@@ -42,10 +47,12 @@ def get_map_data(db: Session = Depends(get_db), current_user: User = Depends(get
         "location": a.location, "time": a.time, "needId": a.needId
     } for a in alerts]
 
-    return {
+    result = {
         "communityNeeds": needs_data,
         "volunteers": vols_data,
         "tasks": tasks_data,
         "alerts": alerts_data,
-        "aiSuggestions": []
+        "aiSuggestions": [],
     }
+    cache_set("map:data", result, ttl=60)
+    return result

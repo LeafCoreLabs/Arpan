@@ -1,6 +1,8 @@
+import { lazy, Suspense } from 'react'
 import { Outlet } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { EarthGlobe } from '../../features/auth/components/EarthGlobe.jsx'
+
+const EarthGlobe = lazy(() => import('../../features/auth/components/EarthGlobe.jsx').then(m => ({ default: m.EarthGlobe ?? m.default })))
 
 export function AuthLayout() {
   return (
@@ -25,7 +27,9 @@ export function AuthLayout() {
       }}>
         {/* Globe Canvas — fills entire panel */}
         <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
-          <EarthGlobe />
+          <Suspense fallback={<div style={{ width: '100%', height: '100%', background: 'radial-gradient(ellipse at 50% 40%, #04111f, #000508)' }} />}>
+            <EarthGlobe />
+          </Suspense>
         </div>
 
         {/* Bottom gradient for text readability */}

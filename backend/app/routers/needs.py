@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from ..database import get_db
 from ..models import CommunityNeed, NeedStatus, NeedSeverity, User, Alert, Activity
+from ..core.cache import cache_get, cache_set, cache_delete
 from .auth import get_current_user
 
 router = APIRouter()
@@ -29,8 +30,11 @@ class NeedUpdate(BaseModel):
 # ── List all needs ──
 @router.get("")
 def get_needs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    cached = cache_get("needs:all")
+    if cached:
+        return cached
     needs = db.query(CommunityNeed).order_by(CommunityNeed.created_at.desc()).all()
-    return [{
+    result = [{
         "id": n.id, "title": n.title, "description": n.description,
         "location": n.location, "lat": n.lat, "lng": n.lng,
         "severity": n.severity.value if n.severity else "medium",
@@ -39,6 +43,8 @@ def get_needs(db: Session = Depends(get_db), current_user: User = Depends(get_cu
         "issueType": n.issueType, "priority": n.priority,
         "reportedBy": n.reported_by
     } for n in needs]
+    cache_set("needs:all", result, ttl=60)
+    return result
 
 # ── My reported needs ──
 @router.get("/my")
@@ -92,6 +98,7 @@ def create_need(need: NeedCreate, db: Session = Depends(get_db), current_user: U
     db.add(Activity(id=act_id, kind="user", text=f"{current_user.full_name or current_user.email} reported: {need.title}", time="just now"))
 
     db.commit()
+    cache_delete("needs:*", "dashboard:summary", "map:data", "ai:suggestions")
     return {"message": "Need created successfully", "id": need_id}
 
 # ── Update a need (coordinator only) ──
@@ -115,6 +122,7 @@ def update_need(need_id: str, updates: NeedUpdate, db: Session = Depends(get_db)
         need.priority = updates.priority
 
     db.commit()
+    cache_delete("needs:*", "dashboard:summary", "map:data", "ai:suggestions")
     return {"message": "Need updated successfully"}
 
 # ── Resolve a need ──
@@ -131,6 +139,7 @@ def resolve_need(need_id: str, db: Session = Depends(get_db), current_user: User
     db.add(Activity(id=act_id, kind="success", text=f"Need '{need.title}' resolved by {current_user.full_name or current_user.email}", time="just now"))
 
     db.commit()
+    cache_delete("needs:*", "dashboard:summary", "map:data", "ai:suggestions")
     return {"message": "Need resolved successfully"}
 
 # ── Delete a need (coordinator only) ──
@@ -141,4 +150,5 @@ def delete_need(need_id: str, db: Session = Depends(get_db), current_user: User 
         raise HTTPException(status_code=404, detail="Need not found")
     db.delete(need)
     db.commit()
+    cache_delete("needs:*", "dashboard:summary", "map:data", "ai:suggestions")
     return {"message": "Need deleted"}
