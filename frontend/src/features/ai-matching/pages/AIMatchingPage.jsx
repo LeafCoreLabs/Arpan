@@ -134,7 +134,7 @@ export default function AIMatchingPage() {
     const utilization = payload.volunteer_utilization ?? payload.volunteerUtilization
     const kpis = payload.kpis ?? payload.stats
     const source = payload.source ?? payload.provider ?? 'local-fallback'
-    const model = payload.model ?? (source === 'gemini' ? 'gemini-3-flash-preview' : 'local-fallback')
+    const model = payload.model ?? (source === 'groq' ? 'llama-3.3-70b-versatile' : 'local-fallback')
     return { matches, unmatched, alerts, activities, utilization, kpis, source, model }
   }, [data])
 
@@ -169,12 +169,12 @@ export default function AIMatchingPage() {
               <span style={{
                 display: 'inline-flex', gap: '0.3rem', alignItems: 'center',
                 fontSize: '0.68rem', fontWeight: 600, padding: '0.2rem 0.55rem', borderRadius: '9999px',
-                background: parsed.source === 'gemini' ? 'rgba(22,163,74,0.1)' : 'rgba(234,179,8,0.1)',
-                color: parsed.source === 'gemini' ? '#16a34a' : '#ca8a04',
-                border: `1px solid ${parsed.source === 'gemini' ? 'rgba(22,163,74,0.25)' : 'rgba(234,179,8,0.25)'}`,
+                background: parsed.source === 'groq' ? 'rgba(22,163,74,0.1)' : 'rgba(234,179,8,0.1)',
+                color: parsed.source === 'groq' ? '#16a34a' : '#ca8a04',
+                border: `1px solid ${parsed.source === 'groq' ? 'rgba(22,163,74,0.25)' : 'rgba(234,179,8,0.25)'}`,
               }}>
                 <BrainCircuit size={12} />
-                {parsed.source === 'gemini' ? 'Gemini Live' : 'Local Engine'}
+                {parsed.source === 'groq' ? 'Groq AI Live' : 'Local Engine'}
               </span>
               <span style={{
                 fontSize: '0.65rem', color: 'var(--af-muted)',
