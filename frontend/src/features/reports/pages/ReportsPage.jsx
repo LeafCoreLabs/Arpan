@@ -3,10 +3,11 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend
 } from 'recharts'
-import { Download, RefreshCcw, TrendingUp, TrendingDown } from 'lucide-react'
+import { Download, RefreshCcw, TrendingUp, TrendingDown, FileSpreadsheet } from 'lucide-react'
 import { fetchReportSummary } from '../api/reports.api.js'
 import { Loader } from '../../../components/ui/Loader.jsx'
 import { ErrorState } from '../../../components/common/ErrorState.jsx'
+import { apiClient } from '../../../services/apiClient.js'
 
 const COLORS = ['#ea580c', '#16a34a', '#f59e0b', '#ef4444', '#8b5cf6']
 
@@ -23,6 +24,15 @@ export default function ReportsPage() {
 
   useEffect(() => { loadData() }, [])
 
+  const exportCSV = async (type) => {
+    try {
+      const res = await apiClient.get(`/api/export/${type}`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a'); a.href = url; a.download = `${type}.csv`
+      document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url)
+    } catch (e) { console.error('Export failed', e) }
+  }
+
   if (loading) return <Loader fullPage />
   if (error) return <ErrorState message={error.message} onRetry={loadData} />
 
@@ -36,9 +46,12 @@ export default function ReportsPage() {
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: '0 0 0.25rem' }}>System Reports</h1>
           <p style={{ color: 'var(--af-muted)', fontSize: '0.9rem', margin: 0 }}>Analytical overview of Arpan humanitarian operations.</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button onClick={loadData} className="btn btn--ghost"><RefreshCcw size={15} /> Refresh</button>
-          <button className="btn btn--primary"><Download size={15} /> Export PDF</button>
+          <button onClick={() => exportCSV('report-summary')} className="btn btn--primary"><Download size={15} /> Export Summary</button>
+          <button onClick={() => exportCSV('volunteers')} className="btn btn--ghost"><FileSpreadsheet size={15} /> Volunteers</button>
+          <button onClick={() => exportCSV('needs')} className="btn btn--ghost"><FileSpreadsheet size={15} /> Needs</button>
+          <button onClick={() => exportCSV('tasks')} className="btn btn--ghost"><FileSpreadsheet size={15} /> Tasks</button>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Send, MapPin, CheckCircle } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Send, MapPin, CheckCircle, Camera, X } from 'lucide-react'
 import { apiClient } from '../../../services/apiClient.js'
 
 const issueTypes = ['general', 'food', 'water', 'medical', 'shelter', 'education', 'sanitation', 'safety']
@@ -8,6 +8,9 @@ export default function UserReportNeed() {
   const [form, setForm] = useState({ title: '', description: '', location: '', issueType: 'general', severity: 'medium', peopleAffected: 1, lat: 28.6139, lng: 77.2090 })
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [imagePreview, setImagePreview] = useState(null)
+  const [imageFile, setImageFile] = useState(null)
+  const fileInputRef = useRef(null)
 
   const handleLocation = () => {
     if (navigator.geolocation) {
@@ -18,11 +21,30 @@ export default function UserReportNeed() {
     }
   }
 
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { alert('Image must be under 5MB'); return }
+    setImageFile(file)
+    const reader = new FileReader()
+    reader.onload = (ev) => setImagePreview(ev.target.result)
+    reader.readAsDataURL(file)
+  }
+
+  const removeImage = () => { setImageFile(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = '' }
+
   const handleSubmit = async (e) => {
     e.preventDefault(); setSubmitting(true)
     try {
-      await apiClient.post('/api/needs', form)
+      const { data } = await apiClient.post('/api/needs', form)
+      const needId = data?.id || data?.need?.id
+      if (imageFile && needId) {
+        const fd = new FormData()
+        fd.append('file', imageFile)
+        await apiClient.post(`/api/upload/need-image/${needId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      }
       setForm({ title: '', description: '', location: '', issueType: 'general', severity: 'medium', peopleAffected: 1, lat: 28.6139, lng: 77.2090 })
+      removeImage()
       setSuccess(true); setTimeout(() => setSuccess(false), 3000)
     } catch (err) { console.error(err) }
     setSubmitting(false)
@@ -75,6 +97,22 @@ export default function UserReportNeed() {
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.8rem', color: 'var(--af-muted)', fontWeight: 500 }}>Description</label>
             <textarea className="searchbar" value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))} rows={3} placeholder="Describe the situation in detail..." style={{ resize: 'vertical' }} />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.8rem', color: 'var(--af-muted)', fontWeight: 500 }}>Photo Evidence (optional)</label>
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} style={{ display: 'none' }} />
+            {imagePreview ? (
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <img src={imagePreview} alt="Preview" style={{ maxWidth: '200px', maxHeight: '150px', borderRadius: '8px', border: '1px solid var(--af-border)' }} />
+                <button type="button" onClick={removeImage} style={{ position: 'absolute', top: -8, right: -8, background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <X size={12} />
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="btn btn--ghost" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Camera size={16} /> Attach Photo
+              </button>
+            )}
           </div>
         </div>
         <button type="submit" disabled={submitting} className="btn btn--primary" style={{ marginTop: '1.5rem' }}>

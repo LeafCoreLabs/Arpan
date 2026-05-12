@@ -1,5 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createContext, useContext, useLayoutEffect, useMemo, useState, useEffect } from 'react'
+import { createContext, useContext, useLayoutEffect, useMemo, useState, useEffect, useCallback } from 'react'
+import { ChatBot } from '../components/common/ChatBot.jsx'
+import { useWebSocket } from '../hooks/useWebSocket.js'
+import { toast } from 'sonner'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -84,10 +87,28 @@ export function AppProviders({ children }) {
     [user, isLoading]
   )
 
+  const handleWsMessage = useCallback((data) => {
+    if (data.type === 'notification') {
+      toast.info(data.title || data.message || 'New notification')
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    } else if (data.type === 'task_assigned') {
+      toast.success(data.message || 'New task assigned!')
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    } else if (data.type === 'need_escalated') {
+      toast.warning(data.message || 'A need has been escalated')
+      queryClient.invalidateQueries({ queryKey: ['needs', 'dashboard'] })
+    }
+  }, [])
+
+  useWebSocket(user ? handleWsMessage : null)
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeContext.Provider value={themeValue}>
-        <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>
+        <AuthContext.Provider value={authValue}>
+          {children}
+          {user && <ChatBot />}
+        </AuthContext.Provider>
       </ThemeContext.Provider>
     </QueryClientProvider>
   )

@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
-from .routers import auth, dashboard, needs, map, volunteers, tasks, ai, notifications, reports, events, profile
+from .routers import auth, dashboard, needs, map, volunteers, tasks, ai, notifications, reports, events, profile, export, upload, leaderboard, chatbot, ws
 from .database import SessionLocal
 from .models import User, CommunityNeed, Volunteer
 
@@ -39,6 +39,11 @@ app.include_router(notifications.router, prefix="/api/notifications", tags=["not
 app.include_router(reports.router)
 app.include_router(events.router, prefix="/api/events", tags=["events"])
 app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
+app.include_router(export.router)
+app.include_router(upload.router)
+app.include_router(leaderboard.router)
+app.include_router(chatbot.router)
+app.include_router(ws.router)
 
 @app.get("/")
 def read_root():

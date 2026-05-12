@@ -10,9 +10,13 @@ import {
   FileText,
   Settings,
   LifeBuoy,
+  Moon,
+  Sun,
 } from 'lucide-react'
 import { ROUTES } from '../../config/routes.js'
 import { useAppStore } from '../../app/store.js'
+import { useTheme } from '../../app/providers.jsx'
+import { useTranslation } from 'react-i18next'
 
 const mainLinks = [
   { to: ROUTES.DASHBOARD, label: 'Dashboard', icon: PieChart, end: true },
@@ -28,6 +32,10 @@ const mainLinks = [
 export function Sidebar() {
   const emergencyMode = useAppStore((s) => s.emergencyMode)
   const setEmergencyMode = useAppStore((s) => s.setEmergencyMode)
+  const { theme, setTheme } = useTheme()
+  const isDark = theme === 'dark'
+  const { i18n } = useTranslation()
+  const isHindi = i18n.language === 'hi'
 
   return (
     <aside className="af-sidebar" aria-label="Main navigation">
@@ -63,6 +71,22 @@ export function Sidebar() {
           </button>
         </div>
         <div className="af-sidebar__utils">
+          <button
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            className="af-sidebar__text-link"
+            style={{ border: 'none', background: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }}
+          >
+            {isDark ? <Sun size={18} /> : <Moon size={18} />}
+            {isDark ? 'Light Mode' : 'Dark Mode'}
+          </button>
+          <button
+            onClick={() => i18n.changeLanguage(isHindi ? 'en' : 'hi')}
+            className="af-sidebar__text-link"
+            style={{ border: 'none', background: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }}
+          >
+            <span style={{ fontSize: '1rem', width: 18, display: 'inline-block', textAlign: 'center' }}>{isHindi ? 'EN' : 'हि'}</span>
+            {isHindi ? 'English' : 'हिन्दी'}
+          </button>
           <NavLink to={ROUTES.SETTINGS} className={({ isActive }) => `af-sidebar__text-link ${isActive ? 'is-active' : ''}`}>
             <Settings size={18} /> Settings
           </NavLink>

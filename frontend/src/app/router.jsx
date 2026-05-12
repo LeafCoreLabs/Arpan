@@ -27,6 +27,7 @@ const VolunteerEvents = lazy(() => import('../features/volunteer-portal/pages/Vo
 const VolunteerFeed = lazy(() => import('../features/volunteer-portal/pages/VolunteerFeed.jsx'))
 const VolunteerNotifications = lazy(() => import('../features/volunteer-portal/pages/VolunteerNotifications.jsx'))
 const VolunteerProfile = lazy(() => import('../features/volunteer-portal/pages/VolunteerProfile.jsx'))
+const VolunteerLeaderboard = lazy(() => import('../features/volunteer-portal/pages/VolunteerLeaderboard.jsx'))
 const UserReportNeed = lazy(() => import('../features/user-portal/pages/UserReportNeed.jsx'))
 const VolunteerMapPage = lazy(() => import('../features/map/pages/MapPage.tsx'))
 
@@ -107,6 +108,7 @@ export function AppRouter() {
           <Route path="events" element={<VolunteerEvents />} />
           <Route path="feed" element={<VolunteerFeed />} />
           <Route path="notifications" element={<VolunteerNotifications />} />
+          <Route path="leaderboard" element={<VolunteerLeaderboard />} />
           <Route path="profile" element={<VolunteerProfile />} />
         </Route>
 

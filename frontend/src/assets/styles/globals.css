@@ -32,6 +32,54 @@ body {
 [data-theme='dark'] body {
   color: #e2e8f0;
   background: #0b1220;
+  --af-orange: #fb923c;
+  --af-orange-dark: #f97316;
+  --af-blue: #38bdf8;
+  --af-green: #22c55e;
+  --af-red: #f87171;
+  --af-border: #1e293b;
+  --af-card: #1e293b;
+  --af-muted: #94a3b8;
+  --af-accent: #818cf8;
+}
+
+[data-theme='dark'] .af-sidebar {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+[data-theme='dark'] .af-card {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+[data-theme='dark'] .af-metric {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+[data-theme='dark'] .searchbar {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+[data-theme='dark'] .page-wrapper {
+  background: #0b1220;
+}
+
+[data-theme='dark'] .topbar {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+[data-theme='dark'] .btn--ghost {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .btn--ghost:hover {
+  background: #1e293b;
+  color: #e2e8f0;
 }
 
 .app-shell {

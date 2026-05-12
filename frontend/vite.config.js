@@ -23,6 +23,7 @@ export default defineConfig({
           leaflet: ['leaflet', 'react-leaflet'],
           charts: ['recharts'],
           mui: ['@mui/material', '@emotion/react', '@emotion/styled'],
+          i18n: ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
         },
       },
     },

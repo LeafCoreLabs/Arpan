@@ -4,12 +4,15 @@ from sqlalchemy import func, case
 from ..database import get_db
 from ..models import CommunityNeed, Volunteer, Task, Activity, Alert, NeedSeverity, NeedStatus, TaskStatus, VolunteerStatus, User
 from ..core.cache import cache_get, cache_set
+from ..core.escalation import check_and_escalate
 from .auth import get_current_user
 
 router = APIRouter()
 
 @router.get("/summary")
 def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    check_and_escalate(db)
+
     cached = cache_get("dashboard:summary")
     if cached:
         return cached
@@ -80,3 +83,9 @@ def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = De
     result = {"metrics": metrics, "aiMatch": aiMatch, "liveActivity": liveActivity, "needsSnapshot": needsSnapshot}
     cache_set("dashboard:summary", result, ttl=30)
     return result
+
+
+@router.post("/escalation-check")
+def run_escalation_check(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    count = check_and_escalate(db)
+    return {"escalated": count, "message": f"{count} need(s) escalated"}

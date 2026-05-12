@@ -1,0 +1,85 @@
+{
+  "nav": {
+    "dashboard": "डैशबोर्ड",
+    "dataCollection": "डेटा संग्रह",
+    "communityNeeds": "सामुदायिक ज़रूरतें",
+    "volunteerMgmt": "स्वयंसेवक प्रबंधन",
+    "aiMatching": "AI मिलान",
+    "mapView": "मानचित्र",
+    "notifications": "सूचनाएँ",
+    "reports": "रिपोर्ट",
+    "settings": "सेटिंग्स",
+    "help": "सहायता",
+    "leaderboard": "लीडरबोर्ड"
+  },
+  "common": {
+    "loading": "लोड हो रहा है...",
+    "submit": "जमा करें",
+    "cancel": "रद्द करें",
+    "save": "सहेजें",
+    "delete": "हटाएँ",
+    "edit": "संपादित करें",
+    "refresh": "रीफ्रेश",
+    "search": "खोजें...",
+    "noData": "कोई डेटा उपलब्ध नहीं",
+    "export": "निर्यात",
+    "back": "वापस"
+  },
+  "auth": {
+    "login": "लॉग इन",
+    "signup": "साइन अप",
+    "logout": "लॉग आउट",
+    "email": "ईमेल",
+    "password": "पासवर्ड",
+    "welcomeBack": "वापसी पर स्वागत",
+    "loginSubtitle": "अपने अर्पण खाते में साइन इन करें"
+  },
+  "dashboard": {
+    "title": "कमान केंद्र",
+    "subtitle": "वास्तविक समय मानवीय संचालन अवलोकन",
+    "totalNeeds": "कुल ज़रूरतें",
+    "activeVolunteers": "सक्रिय स्वयंसेवक",
+    "urgentCases": "आपातकालीन मामले",
+    "resolved": "समाधान हुए"
+  },
+  "needs": {
+    "title": "सामुदायिक ज़रूरतें",
+    "reportNeed": "ज़रूरत रिपोर्ट करें",
+    "severity": "गंभीरता",
+    "status": "स्थिति",
+    "location": "स्थान",
+    "peopleAffected": "प्रभावित लोग",
+    "critical": "गंभीर",
+    "high": "उच्च",
+    "medium": "मध्यम",
+    "low": "कम"
+  },
+  "volunteers": {
+    "title": "स्वयंसेवक प्रबंधन",
+    "available": "उपलब्ध",
+    "busy": "व्यस्त",
+    "offline": "ऑफ़लाइन",
+    "tasks": "कार्य",
+    "rating": "रेटिंग",
+    "skills": "कौशल"
+  },
+  "chatbot": {
+    "title": "अर्पण AI",
+    "placeholder": "कुछ भी पूछें...",
+    "greeting": "नमस्ते! मैं अर्पण AI हूँ। कार्य, ज़रूरतें, कार्यक्रम या प्लेटफ़ॉर्म के बारे में कुछ भी पूछें।"
+  },
+  "reports": {
+    "title": "सिस्टम रिपोर्ट",
+    "subtitle": "अर्पण मानवीय संचालन का विश्लेषणात्मक अवलोकन",
+    "exportSummary": "सारांश निर्यात",
+    "exportVolunteers": "स्वयंसेवक",
+    "exportNeeds": "ज़रूरतें",
+    "exportTasks": "कार्य"
+  },
+  "darkMode": "डार्क मोड",
+  "lightMode": "लाइट मोड",
+  "emergencyMode": "आपातकालीन मोड",
+  "emergencyHint": "आपदा प्रतिक्रिया के लिए त्वरित तैनाती प्रोटोकॉल सक्रिय करें।",
+  "activate": "अभी सक्रिय करें",
+  "deactivate": "निष्क्रिय करें"
+}

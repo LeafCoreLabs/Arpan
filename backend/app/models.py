@@ -53,6 +53,7 @@ class CommunityNeed(Base):
     timeReported = Column(String, default="just now")
     location = Column(String)
     reported_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    image_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     reporter = relationship("User", foreign_keys=[reported_by])
