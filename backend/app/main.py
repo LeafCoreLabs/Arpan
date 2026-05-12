@@ -14,12 +14,13 @@ def on_startup():
     from .database import engine, Base
     from . import models  # noqa: F401 — ensure all models are loaded
     Base.metadata.create_all(bind=engine)
-    try:
-        from .seed import seed_data
-        seed_data()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning("Seed skipped: %s", e)
+
+
+@app.post("/api/admin/seed")
+def run_seed():
+    from .seed import seed_data
+    seed_data()
+    return {"message": "Seed completed"}
 
 # Setup CORS for the frontend
 cors_origins = [
