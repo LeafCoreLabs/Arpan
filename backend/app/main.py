@@ -8,6 +8,19 @@ from .models import User, CommunityNeed, Volunteer
 
 app = FastAPI(title="Arpan Backend API", version="1.0.0", redirect_slashes=False)
 
+
+@app.on_event("startup")
+def on_startup():
+    from .database import engine, Base
+    from . import models  # noqa: F401 — ensure all models are loaded
+    Base.metadata.create_all(bind=engine)
+    try:
+        from .seed import seed_data
+        seed_data()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Seed skipped: %s", e)
+
 # Setup CORS for the frontend
 cors_origins = [
     origin.strip()
