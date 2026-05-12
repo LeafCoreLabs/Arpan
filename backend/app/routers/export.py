@@ -1,10 +1,10 @@
 import io
 import csv
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from ..database import get_db
-from ..models import User, Volunteer, CommunityNeed, Task, Event
+from ..models import User, Volunteer, CommunityNeed, Task, Event, NeedStatus
 from .auth import get_current_user
 
 router = APIRouter(prefix="/api/export", tags=["export"])
@@ -27,9 +27,10 @@ def _csv_response(rows: list[dict], filename: str):
 
 @router.get("/volunteers")
 def export_volunteers(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    vols = db.query(Volunteer).all()
+    from sqlalchemy.orm import joinedload
+    vols = db.query(Volunteer).options(joinedload(Volunteer.user)).all()
     rows = [{
-        "ID": v.id, "Name": v.name, "Email": v.email or "",
+        "ID": v.id, "Name": v.name, "Email": v.user.email if getattr(v, "user", None) else "",
         "Skills": v.skills, "Region": v.region, "Status": v.status.value if v.status else "",
         "Rating": v.rating, "Completed Tasks": v.completedTasks,
         "Response Time": v.responseTime,
@@ -74,7 +75,7 @@ def export_events(db: Session = Depends(get_db), current_user: User = Depends(ge
 @router.get("/report-summary")
 def export_report(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     total_needs = db.query(CommunityNeed).count()
-    resolved = db.query(CommunityNeed).filter(CommunityNeed.status.in_(["resolved", "RESOLVED"])).count()
+    resolved = db.query(CommunityNeed).filter(CommunityNeed.status == NeedStatus.RESOLVED).count()
     total_vols = db.query(Volunteer).count()
     total_tasks = db.query(Task).count()
     rows = [{

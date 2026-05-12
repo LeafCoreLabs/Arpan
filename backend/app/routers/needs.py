@@ -142,8 +142,8 @@ def resolve_need(need_id: str, db: Session = Depends(get_db), current_user: User
     cache_delete("needs:*", "dashboard:summary", "map:data", "ai:suggestions")
 
     from ..core.email import send_need_resolved_email
-    if need.reportedBy:
-        reporter = db.query(User).filter(User.id == need.reportedBy).first()
+    if need.reported_by:
+        reporter = db.query(User).filter(User.id == need.reported_by).first()
         if reporter:
             send_need_resolved_email(reporter.email, reporter.full_name or "Community Member", need.title)
 

@@ -11,9 +11,10 @@ app = FastAPI(title="Arpan Backend API", version="1.0.0", redirect_slashes=False
 
 @app.on_event("startup")
 def on_startup():
-    from .database import engine, Base
+    from .database import engine, Base, ensure_sqlite_schema
     from . import models  # noqa: F401 — ensure all models are loaded
     Base.metadata.create_all(bind=engine)
+    ensure_sqlite_schema(engine)
 
 
 @app.post("/api/admin/seed")

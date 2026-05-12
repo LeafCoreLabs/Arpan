@@ -1,9 +1,20 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 load_dotenv()
+
+
+def ensure_sqlite_schema(engine):
+    """Add columns missing from older SQLite DBs (create_all does not ALTER)."""
+    if engine.dialect.name != "sqlite":
+        return
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(needs)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "image_url" not in col_names:
+            conn.execute(text("ALTER TABLE needs ADD COLUMN image_url VARCHAR"))
 
 # Get database URL from environment variable, default to SQLite for local development
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./aidflow.db")

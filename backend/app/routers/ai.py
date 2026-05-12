@@ -384,7 +384,7 @@ async def assign_match(payload: dict, db: Session = Depends(get_db), current_use
     cache_delete("ai:suggestions", "tasks:all", "dashboard:summary", "needs:*", "volunteers:all", "map:data")
 
     from ..core.email import send_task_assigned_email
-    vol_user = db.query(User).filter(User.id == volunteer.userId).first() if hasattr(volunteer, 'userId') else None
+    vol_user = db.query(User).filter(User.id == volunteer.user_id).first() if volunteer.user_id else None
     if vol_user and vol_user.email:
         send_task_assigned_email(vol_user.email, volunteer.name, need.title, need.location or "")
 
